@@ -6,6 +6,7 @@
 #include "../../Common/MathHelper.h"
 #include "../../Common/UploadBuffer.h"
 #include "../../Common/GeometryGenerator.h"
+#include "../../Common/Camera.h"
 #include "FrameResource.h"
 #include "Waves.h"
 
@@ -80,7 +81,6 @@ private:
     virtual void OnMouseMove(WPARAM btnState, int x, int y)override;
 
     void OnKeyboardInput(const GameTimer& gt);
-	void UpdateCamera(const GameTimer& gt);
 	void AnimateMaterials(const GameTimer& gt);
 	void UpdateObjectCBs(const GameTimer& gt);
 	void UpdateMaterialCBs(const GameTimer& gt);
@@ -141,12 +141,13 @@ private:
     PassConstants mMainPassCB;
 
 	XMFLOAT3 mEyePos = { 0.0f, 0.0f, 0.0f };
-	XMFLOAT4X4 mView = MathHelper::Identity4x4();
 	XMFLOAT4X4 mProj = MathHelper::Identity4x4();
 
-    float mTheta = 1.5f*XM_PI;
-    float mPhi = XM_PIDIV2 - 0.1f;
-    float mRadius = 50.0f;
+    //float mTheta = 1.5f*XM_PI;
+    //float mPhi = XM_PIDIV2 - 0.1f;
+    //float mRadius = 50.0f;
+
+	Camera mCamera;
 
     POINT mLastMousePos;
 };
@@ -198,6 +199,9 @@ bool BlendApp::Initialize()
     mCbvSrvDescriptorSize = md3dDevice->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
 
     mWaves = std::make_unique<Waves>(128, 128, 1.0f, 0.03f, 4.0f, 0.2f);
+
+	mCamera.SetPosition(40.0f, 10.0f, -45.0f);
+	mCamera.RotateY(-0.85f);
  
 	LoadTextures();
     BuildRootSignature();
@@ -230,12 +234,15 @@ void BlendApp::OnResize()
     // The window resized, so update the aspect ratio and recompute the projection matrix.
     XMMATRIX P = XMMatrixPerspectiveFovLH(0.25f*MathHelper::Pi, AspectRatio(), 1.0f, 1000.0f);
     XMStoreFloat4x4(&mProj, P);
+
+	mCamera.SetLens(0.25f * MathHelper::Pi, AspectRatio(), 1.0f, 1000.0f);
 }
 
 void BlendApp::Update(const GameTimer& gt)
 {
     OnKeyboardInput(gt);
-	UpdateCamera(gt);
+
+	mCamera.UpdateViewMatrix();
 
     // Cycle through the circular frame resource array.
     mCurrFrameResourceIndex = (mCurrFrameResourceIndex + 1) % gNumFrameResources;
@@ -341,38 +348,51 @@ void BlendApp::OnMouseUp(WPARAM btnState, int x, int y)
 
 void BlendApp::OnMouseMove(WPARAM btnState, int x, int y)
 {
-    if((btnState & MK_LBUTTON) != 0)
-    {
-        // Make each pixel correspond to a quarter of a degree.
-        float dx = XMConvertToRadians(0.25f*static_cast<float>(x - mLastMousePos.x));
-        float dy = XMConvertToRadians(0.25f*static_cast<float>(y - mLastMousePos.y));
+	if ((btnState & MK_LBUTTON) != 0)
+	{
+		// Make each pixel correspond to a quarter of a degree.
+		float dx = XMConvertToRadians(0.25f * static_cast<float>(x - mLastMousePos.x));
+		float dy = XMConvertToRadians(0.25f * static_cast<float>(y - mLastMousePos.y));
 
-        // Update angles based on input to orbit camera around box.
-        mTheta += dx;
-        mPhi += dy;
+		mCamera.Pitch(dy);
+		mCamera.RotateY(dx);
+	}
 
-        // Restrict the angle mPhi.
-        mPhi = MathHelper::Clamp(mPhi, 0.1f, MathHelper::Pi - 0.1f);
-    }
-    else if((btnState & MK_RBUTTON) != 0)
-    {
-        // Make each pixel correspond to 0.2 unit in the scene.
-        float dx = 0.2f*static_cast<float>(x - mLastMousePos.x);
-        float dy = 0.2f*static_cast<float>(y - mLastMousePos.y);
-
-        // Update the camera radius based on input.
-        mRadius += dx - dy;
-
-        // Restrict the radius.
-        mRadius = MathHelper::Clamp(mRadius, 5.0f, 150.0f);
-    }
-
-    mLastMousePos.x = x;
-    mLastMousePos.y = y;
+	mLastMousePos.x = x;
+	mLastMousePos.y = y;
 }
  
 void BlendApp::OnKeyboardInput(const GameTimer& gt)
 {
+	const float dt = gt.DeltaTime();
+
+	const float cameraSpeed = 15.0f;
+	const float rotateSpeed = 1.0f;
+
+	if (GetAsyncKeyState('W') & 0x8000)
+		mCamera.Walk(cameraSpeed * dt);
+
+	if (GetAsyncKeyState('S') & 0x8000)
+		mCamera.Walk(-cameraSpeed * dt);
+
+	if (GetAsyncKeyState('A') & 0x8000)
+		mCamera.Strafe(-cameraSpeed * dt);
+
+	if (GetAsyncKeyState('D') & 0x8000)
+		mCamera.Strafe(cameraSpeed * dt);
+
+	if (GetAsyncKeyState('C') & 0x8000) 
+		mCamera.Pitch(-rotateSpeed * dt);
+
+	if (GetAsyncKeyState('Z') & 0x8000) 
+		mCamera.Pitch(rotateSpeed * dt);
+
+	if (GetAsyncKeyState('Q') & 0x8000)
+		mCamera.RotateY(-rotateSpeed * dt);
+
+	if (GetAsyncKeyState('E') & 0x8000)
+		mCamera.RotateY(rotateSpeed * dt);
+
 }
 
 void BlendApp::AnimateSkull(const GameTimer& gt)
@@ -388,22 +408,6 @@ void BlendApp::AnimateSkull(const GameTimer& gt)
 	XMStoreFloat4x4(&mSkullRitem->World, world);
 
 	mSkullRitem->NumFramesDirty = gNumFrameResources;
-}
- 
-void BlendApp::UpdateCamera(const GameTimer& gt)
-{
-	// Convert Spherical to Cartesian coordinates.
-	mEyePos.x = mRadius*sinf(mPhi)*cosf(mTheta);
-	mEyePos.z = mRadius*sinf(mPhi)*sinf(mTheta);
-	mEyePos.y = mRadius*cosf(mPhi);
-
-	// Build the view matrix.
-	XMVECTOR pos = XMVectorSet(mEyePos.x, mEyePos.y, mEyePos.z, 1.0f);
-	XMVECTOR target = XMVectorZero();
-	XMVECTOR up = XMVectorSet(0.0f, 1.0f, 0.0f, 0.0f);
-
-	XMMATRIX view = XMMatrixLookAtLH(pos, target, up);
-	XMStoreFloat4x4(&mView, view);
 }
 
 void BlendApp::AnimateMaterials(const GameTimer& gt)
@@ -490,8 +494,8 @@ void BlendApp::UpdateMaterialCBs(const GameTimer& gt)
 
 void BlendApp::UpdateMainPassCB(const GameTimer& gt)
 {
-	XMMATRIX view = XMLoadFloat4x4(&mView);
-	XMMATRIX proj = XMLoadFloat4x4(&mProj);
+	XMMATRIX view = mCamera.GetView();
+	XMMATRIX proj = mCamera.GetProj();
 
 	XMMATRIX viewProj = XMMatrixMultiply(view, proj);
 	XMMATRIX invView = XMMatrixInverse(&XMMatrixDeterminant(view), view);
@@ -504,7 +508,7 @@ void BlendApp::UpdateMainPassCB(const GameTimer& gt)
 	XMStoreFloat4x4(&mMainPassCB.InvProj, XMMatrixTranspose(invProj));
 	XMStoreFloat4x4(&mMainPassCB.ViewProj, XMMatrixTranspose(viewProj));
 	XMStoreFloat4x4(&mMainPassCB.InvViewProj, XMMatrixTranspose(invViewProj));
-	mMainPassCB.EyePosW = mEyePos;
+	mMainPassCB.EyePosW = mCamera.GetPosition3f();
 	mMainPassCB.RenderTargetSize = XMFLOAT2((float)mClientWidth, (float)mClientHeight);
 	mMainPassCB.InvRenderTargetSize = XMFLOAT2(1.0f / mClientWidth, 1.0f / mClientHeight);
 	mMainPassCB.NearZ = 1.0f;
@@ -512,6 +516,9 @@ void BlendApp::UpdateMainPassCB(const GameTimer& gt)
 	mMainPassCB.TotalTime = gt.TotalTime();
 	mMainPassCB.DeltaTime = gt.DeltaTime();
 	mMainPassCB.AmbientLight = { 0.25f, 0.25f, 0.35f, 1.0f };
+	mMainPassCB.FogColor = { 0.7f, 0.7f, 0.7f, 1.0f }; 
+	mMainPassCB.gFogStart = 5.0f;
+	mMainPassCB.gFogRange = 150.0f;
 	mMainPassCB.Lights[0].Direction = { 0.57735f, -0.57735f, 0.57735f };
 	mMainPassCB.Lights[0].Strength = { 0.9f, 0.9f, 0.8f };
 	mMainPassCB.Lights[1].Direction = { -0.57735f, -0.57735f, 0.57735f };
