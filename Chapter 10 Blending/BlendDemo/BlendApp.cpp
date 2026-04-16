@@ -86,7 +86,10 @@ private:
 	void UpdateMaterialCBs(const GameTimer& gt);
 	void UpdateMainPassCB(const GameTimer& gt);
 	void UpdateWaves(const GameTimer& gt); 
+
 	void AnimateSkull(const GameTimer& gt);
+
+	void AnimateMiniSkull(const GameTimer& gt, const XMMATRIX& parentWorld, float orbitRadius, float orbitSpeed, float selfRotateSpeed, RenderItem* miniSkullRitem);
 
 	void LoadTextures();
     void BuildRootSignature();
@@ -129,6 +132,7 @@ private:
  
     RenderItem* mWavesRitem = nullptr;
 	RenderItem* mSkullRitem = nullptr;
+	RenderItem* mMiniSkullRitem = nullptr;
 
 	// List of all the render items.
 	std::vector<std::unique_ptr<RenderItem>> mAllRitems;
@@ -264,6 +268,7 @@ void BlendApp::Update(const GameTimer& gt)
 	UpdateMainPassCB(gt);
     UpdateWaves(gt);
 	AnimateSkull(gt);
+	AnimateMiniSkull(gt, XMLoadFloat4x4(&mSkullRitem->World), 2.0f, 0.5f, 2.0f, mMiniSkullRitem);
 }
 
 void BlendApp::Draw(const GameTimer& gt)
@@ -410,10 +415,26 @@ void BlendApp::AnimateSkull(const GameTimer& gt)
 	mSkullRitem->NumFramesDirty = gNumFrameResources;
 }
 
+void BlendApp::AnimateMiniSkull(const GameTimer& gt, const XMMATRIX& parentWorld, float orbitRadius, float orbitSpeed, float selfRotateSpeed, RenderItem* miniSkullRitem)
+{
+	float t = gt.TotalTime();
+
+	XMMATRIX orbitRotation = XMMatrixRotationY(t * orbitSpeed);
+	XMMATRIX selfRotation = XMMatrixRotationY(t * selfRotateSpeed);
+	XMMATRIX scale = XMMatrixScaling(0.2f, 0.2f, 0.2f);
+	XMMATRIX translation = XMMatrixTranslation(orbitRadius, 0.0f, 0.0f);
+
+	XMMATRIX world = selfRotation * translation * orbitRotation * parentWorld;
+
+	XMStoreFloat4x4(&miniSkullRitem->World, world);
+	miniSkullRitem->NumFramesDirty = gNumFrameResources;
+}
+
 void BlendApp::AnimateMaterials(const GameTimer& gt)
 {
 	// Scroll the water material texture coordinates.
 	auto waterMat = mMaterials["water"].get();
+	auto miniSkullMat = mMaterials["miniSkullMat"].get();
 
 	float& tu = waterMat->MatTransform(3, 0);
 	float& tv = waterMat->MatTransform(3, 1);
@@ -438,8 +459,11 @@ void BlendApp::AnimateMaterials(const GameTimer& gt)
 
 	waterMat->DiffuseAlbedo = XMFLOAT4(r, g, b, 0.5f);
 
+	miniSkullMat->DiffuseAlbedo = XMFLOAT4(255.0f, 0.5f + 0.5f * sinf(t * 1.1f), 0.0f, 1.0f);
+
 	// Material has changed, so need to update cbuffer.
 	waterMat->NumFramesDirty = gNumFrameResources;
+	miniSkullMat->NumFramesDirty = gNumFrameResources;
 }
 
 void BlendApp::UpdateObjectCBs(const GameTimer& gt)
@@ -1064,7 +1088,16 @@ void BlendApp::BuildMaterials()
 	skull->FresnelR0 = XMFLOAT3(0.05f, 0.05f, 0.05f);
 	skull->Roughness = 0.3f;
 
+	auto miniSkull = std::make_unique<Material>();
+	miniSkull->Name = "miniSkull";
+	miniSkull->MatCBIndex = 3;
+	miniSkull->DiffuseSrvHeapIndex = 2;
+	miniSkull->DiffuseAlbedo = XMFLOAT4(3.0f, 3.0f, 3.0f, 1.0f);
+	miniSkull->FresnelR0 = XMFLOAT3(0.05f, 0.05f, 0.05f);
+	miniSkull->Roughness = 0.6f;
+
 	mMaterials["skullWhite"] = std::move(skull);
+	mMaterials["miniSkull"] = std::move(miniSkull);
 
 	mMaterials["grass"] = std::move(grass);
 	mMaterials["water"] = std::move(water);
@@ -1131,10 +1164,24 @@ void BlendApp::BuildRenderItems()
 
 	mRitemLayer[(int)RenderLayer::Opaque].push_back(skullRitem.get());
 
+	auto miniSkullRitem = std::make_unique<RenderItem>();
+
+	miniSkullRitem->ObjCBIndex = 4;
+	miniSkullRitem->Mat = mMaterials["miniSkull"].get();
+	miniSkullRitem->Geo = mGeometries["skullGeo"].get();
+	miniSkullRitem->PrimitiveType = D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST;
+	
+	miniSkullRitem->IndexCount =
+		miniSkullRitem->Geo->DrawArgs["skull"].IndexCount;
+	mMiniSkullRitem = miniSkullRitem.get();
+
+	mRitemLayer[(int)RenderLayer::Opaque].push_back(miniSkullRitem.get());
+
     mAllRitems.push_back(std::move(wavesRitem));
     mAllRitems.push_back(std::move(gridRitem));
 	mAllRitems.push_back(std::move(boxRitem));
 	mAllRitems.push_back(std::move(skullRitem));
+	mAllRitems.push_back(std::move(miniSkullRitem));
 }
 
 void BlendApp::DrawRenderItems(ID3D12GraphicsCommandList* cmdList, const std::vector<RenderItem*>& ritems)

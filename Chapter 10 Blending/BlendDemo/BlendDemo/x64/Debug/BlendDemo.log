@@ -1,2 +1,12 @@
-﻿  BlendApp.cpp
+﻿  d3dApp.cpp
+  d3dUtil.cpp
+  DDSTextureLoader.cpp
+  GameTimer.cpp
+  GeometryGenerator.cpp
+  MathHelper.cpp
+  Camera.cpp
+  BlendApp.cpp
+  FrameResource.cpp
+  Waves.cpp
+  Generating Code...
   BlendDemo.vcxproj -> C:\Users\Conner\Documents\Term 4\4995\TermProj\Chapter 10 Blending\BlendDemo\x64\Debug\BlendDemo.exe
