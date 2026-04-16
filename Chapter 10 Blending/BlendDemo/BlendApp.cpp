@@ -381,7 +381,7 @@ void BlendApp::AnimateSkull(const GameTimer& gt)
 
 	XMMATRIX rotation = XMMatrixRotationY(t);
 	XMMATRIX scale = XMMatrixScaling(0.5f, 0.5f, 0.5f);
-	XMMATRIX translation = XMMatrixTranslation(3.0f, 0.0f, -9.0f);
+	XMMATRIX translation = XMMatrixTranslation(0.0f, 5.0f, -8.0f);
 
 	XMMATRIX world = scale * rotation * translation;
 
@@ -812,7 +812,7 @@ void BlendApp::BuildWavesGeometry()
 }
 
 void BlendApp::BuildSkullGeometry() {
-	std::ifstream fin("skull.txt");
+	std::ifstream fin("Models/skull.txt");
 
 	if (!fin)
 	{
@@ -1095,7 +1095,12 @@ void BlendApp::BuildRenderItems()
 	mRitemLayer[(int)RenderLayer::Opaque].push_back(gridRitem.get());
 
 	auto boxRitem = std::make_unique<RenderItem>();
-	XMStoreFloat4x4(&boxRitem->World, XMMatrixTranslation(3.0f, 2.0f, -9.0f));
+
+	XMStoreFloat4x4(
+		&boxRitem->World, 
+		XMMatrixTranslation(0.0f, 7.0f, -8.0f)
+	);
+
 	boxRitem->ObjCBIndex = 2;
 	boxRitem->Mat = mMaterials["wirefence"].get();
 	boxRitem->Geo = mGeometries["boxGeo"].get();
@@ -1107,12 +1112,6 @@ void BlendApp::BuildRenderItems()
 	mRitemLayer[(int)RenderLayer::AlphaTested].push_back(boxRitem.get());
 
 	auto skullRitem = std::make_unique<RenderItem>();
-
-	XMStoreFloat4x4(
-		&skullRitem->World,
-		XMMatrixScaling(0.5f, 0.5f, 0.5f) *
-		XMMatrixTranslation(3.0f, 0.0f, -9.0f)
-	);
 
 	skullRitem->ObjCBIndex = 3;
 	skullRitem->Mat = mMaterials["skullWhite"].get();
