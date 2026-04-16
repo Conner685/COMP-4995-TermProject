@@ -434,7 +434,7 @@ void BlendApp::AnimateMaterials(const GameTimer& gt)
 {
 	// Scroll the water material texture coordinates.
 	auto waterMat = mMaterials["water"].get();
-	auto miniSkullMat = mMaterials["miniSkullMat"].get();
+	auto miniSkullMat = mMaterials["miniSkull"].get();
 
 	float& tu = waterMat->MatTransform(3, 0);
 	float& tv = waterMat->MatTransform(3, 1);
@@ -1090,7 +1090,7 @@ void BlendApp::BuildMaterials()
 
 	auto miniSkull = std::make_unique<Material>();
 	miniSkull->Name = "miniSkull";
-	miniSkull->MatCBIndex = 3;
+	miniSkull->MatCBIndex = 4;
 	miniSkull->DiffuseSrvHeapIndex = 2;
 	miniSkull->DiffuseAlbedo = XMFLOAT4(3.0f, 3.0f, 3.0f, 1.0f);
 	miniSkull->FresnelR0 = XMFLOAT3(0.05f, 0.05f, 0.05f);
