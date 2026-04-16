@@ -86,6 +86,7 @@ private:
 	void UpdateMaterialCBs(const GameTimer& gt);
 	void UpdateMainPassCB(const GameTimer& gt);
 	void UpdateWaves(const GameTimer& gt); 
+	void AnimateSkull(const GameTimer& gt);
 
 	void LoadTextures();
     void BuildRootSignature();
@@ -127,6 +128,7 @@ private:
     std::vector<D3D12_INPUT_ELEMENT_DESC> mInputLayout;
  
     RenderItem* mWavesRitem = nullptr;
+	RenderItem* mSkullRitem = nullptr;
 
 	// List of all the render items.
 	std::vector<std::unique_ptr<RenderItem>> mAllRitems;
@@ -254,6 +256,7 @@ void BlendApp::Update(const GameTimer& gt)
 	UpdateMaterialCBs(gt);
 	UpdateMainPassCB(gt);
     UpdateWaves(gt);
+	AnimateSkull(gt);
 }
 
 void BlendApp::Draw(const GameTimer& gt)
@@ -370,6 +373,21 @@ void BlendApp::OnMouseMove(WPARAM btnState, int x, int y)
  
 void BlendApp::OnKeyboardInput(const GameTimer& gt)
 {
+}
+
+void BlendApp::AnimateSkull(const GameTimer& gt)
+{
+	float t = gt.TotalTime();
+
+	XMMATRIX rotation = XMMatrixRotationY(t);
+	XMMATRIX scale = XMMatrixScaling(0.5f, 0.5f, 0.5f);
+	XMMATRIX translation = XMMatrixTranslation(3.0f, 0.0f, -9.0f);
+
+	XMMATRIX world = scale * rotation * translation;
+
+	XMStoreFloat4x4(&mSkullRitem->World, world);
+
+	mSkullRitem->NumFramesDirty = gNumFrameResources;
 }
  
 void BlendApp::UpdateCamera(const GameTimer& gt)
@@ -1103,6 +1121,7 @@ void BlendApp::BuildRenderItems()
 
 	skullRitem->IndexCount =
 		skullRitem->Geo->DrawArgs["skull"].IndexCount;
+	mSkullRitem = skullRitem.get();
 
 	mRitemLayer[(int)RenderLayer::Opaque].push_back(skullRitem.get());
 
