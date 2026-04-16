@@ -94,6 +94,7 @@ private:
     void BuildLandGeometry();
     void BuildWavesGeometry();
 	void BuildBoxGeometry();
+	void BuildSkullGeometry();
     void BuildPSOs();
     void BuildFrameResources();
     void BuildMaterials();
@@ -203,6 +204,7 @@ bool BlendApp::Initialize()
     BuildLandGeometry();
     BuildWavesGeometry();
 	BuildBoxGeometry();
+	BuildSkullGeometry();
 	BuildMaterials();
     BuildRenderItems();
     BuildFrameResources();
@@ -783,6 +785,91 @@ void BlendApp::BuildWavesGeometry()
 	mGeometries["waterGeo"] = std::move(geo);
 }
 
+void BlendApp::BuildSkullGeometry() {
+	std::ifstream fin("skull.txt");
+
+	if (!fin)
+	{
+		MessageBox(0, L"skull.txt not found.", 0, 0);
+		return;
+	}
+
+	UINT vcount = 0;
+	UINT tcount = 0;
+	std::string ignore;
+
+	fin >> ignore >> vcount;
+	fin >> ignore >> tcount;
+
+	fin >> ignore;
+	fin >> ignore;
+	fin >> ignore;
+	fin >> ignore; 
+
+	std::vector<Vertex> vertices(vcount);
+
+	for (UINT i = 0; i < vcount; ++i)
+	{
+		fin >> vertices[i].Pos.x
+			>> vertices[i].Pos.y
+			>> vertices[i].Pos.z;
+
+		fin >> vertices[i].Normal.x
+			>> vertices[i].Normal.y
+			>> vertices[i].Normal.z;
+
+		vertices[i].TexC = XMFLOAT2(0.0f, 0.0f);
+	}
+
+	fin >> ignore;
+	fin >> ignore;
+	fin >> ignore;
+
+	std::vector<std::int32_t> indices(3 * tcount);
+
+	for (UINT i = 0; i < tcount; ++i)
+	{
+		fin >> indices[i * 3 + 0]
+			>> indices[i * 3 + 1]
+			>> indices[i * 3 + 2];
+	}
+
+	fin.close();
+
+	const UINT vbByteSize = (UINT)vertices.size() * sizeof(Vertex);
+	const UINT ibByteSize = (UINT)indices.size() * sizeof(std::int32_t);
+
+	auto geo = std::make_unique<MeshGeometry>();
+	geo->Name = "skullGeo";
+
+	ThrowIfFailed(D3DCreateBlob(vbByteSize, &geo->VertexBufferCPU));
+	CopyMemory(geo->VertexBufferCPU->GetBufferPointer(), vertices.data(), vbByteSize);
+
+	ThrowIfFailed(D3DCreateBlob(ibByteSize, &geo->IndexBufferCPU));
+	CopyMemory(geo->IndexBufferCPU->GetBufferPointer(), indices.data(), ibByteSize);
+
+	geo->VertexBufferGPU = d3dUtil::CreateDefaultBuffer(md3dDevice.Get(),
+		mCommandList.Get(), vertices.data(), vbByteSize, geo->VertexBufferUploader);
+
+	geo->IndexBufferGPU = d3dUtil::CreateDefaultBuffer(md3dDevice.Get(),
+		mCommandList.Get(), indices.data(), ibByteSize, geo->IndexBufferUploader);
+
+	geo->VertexByteStride = sizeof(Vertex);
+	geo->VertexBufferByteSize = vbByteSize;
+	geo->IndexFormat = DXGI_FORMAT_R32_UINT;
+	geo->IndexBufferByteSize = ibByteSize;
+
+	SubmeshGeometry submesh;
+	submesh.IndexCount = (UINT)indices.size();
+	submesh.StartIndexLocation = 0;
+	submesh.BaseVertexLocation = 0;
+
+	geo->DrawArgs["skull"] = submesh;
+
+	mGeometries[geo->Name] = std::move(geo);
+}
+
+
 void BlendApp::BuildBoxGeometry()
 {
 	GeometryGenerator geoGen;
@@ -936,6 +1023,16 @@ void BlendApp::BuildMaterials()
 	wirefence->FresnelR0 = XMFLOAT3(0.1f, 0.1f, 0.1f);
 	wirefence->Roughness = 0.25f;
 
+	auto skull = std::make_unique<Material>();
+	skull->Name = "skullWhite";
+	skull->MatCBIndex = 3;
+	skull->DiffuseSrvHeapIndex = 2;
+	skull->DiffuseAlbedo = XMFLOAT4(3.0f, 3.0f, 3.0f, 1.0f);
+	skull->FresnelR0 = XMFLOAT3(0.05f, 0.05f, 0.05f);
+	skull->Roughness = 0.3f;
+
+	mMaterials["skullWhite"] = std::move(skull);
+
 	mMaterials["grass"] = std::move(grass);
 	mMaterials["water"] = std::move(water);
 	mMaterials["wirefence"] = std::move(wirefence);
@@ -983,9 +1080,28 @@ void BlendApp::BuildRenderItems()
 
 	mRitemLayer[(int)RenderLayer::AlphaTested].push_back(boxRitem.get());
 
+	auto skullRitem = std::make_unique<RenderItem>();
+
+	XMStoreFloat4x4(
+		&skullRitem->World,
+		XMMatrixScaling(0.5f, 0.5f, 0.5f) *
+		XMMatrixTranslation(3.0f, 6.0f, -9.0f)
+	);
+
+	skullRitem->ObjCBIndex = 3;
+	skullRitem->Mat = mMaterials["skullWhite"].get();
+	skullRitem->Geo = mGeometries["skullGeo"].get();
+	skullRitem->PrimitiveType = D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST;
+
+	skullRitem->IndexCount =
+		skullRitem->Geo->DrawArgs["skull"].IndexCount;
+
+	mRitemLayer[(int)RenderLayer::Opaque].push_back(skullRitem.get());
+
     mAllRitems.push_back(std::move(wavesRitem));
     mAllRitems.push_back(std::move(gridRitem));
 	mAllRitems.push_back(std::move(boxRitem));
+	mAllRitems.push_back(std::move(skullRitem));
 }
 
 void BlendApp::DrawRenderItems(ID3D12GraphicsCommandList* cmdList, const std::vector<RenderItem*>& ritems)
