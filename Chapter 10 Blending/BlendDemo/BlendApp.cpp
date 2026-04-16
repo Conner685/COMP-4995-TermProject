@@ -408,6 +408,14 @@ void BlendApp::AnimateMaterials(const GameTimer& gt)
 	waterMat->MatTransform(3, 0) = tu;
 	waterMat->MatTransform(3, 1) = tv;
 
+	float t = gt.TotalTime();
+
+	float r = 0.5f + 0.5f * sinf(t * 0.7f);
+	float g = 0.5f + 0.5f * sinf(t * 1.1f);
+	float b = 0.7f + 0.3f * sinf(t * 0.4f);
+
+	waterMat->DiffuseAlbedo = XMFLOAT4(r, g, b, 0.5f);
+
 	// Material has changed, so need to update cbuffer.
 	waterMat->NumFramesDirty = gNumFrameResources;
 }
