@@ -1093,7 +1093,7 @@ void BlendApp::BuildRenderItems()
 	XMStoreFloat4x4(
 		&skullRitem->World,
 		XMMatrixScaling(0.5f, 0.5f, 0.5f) *
-		XMMatrixTranslation(3.0f, 6.0f, -9.0f)
+		XMMatrixTranslation(3.0f, 0.0f, -9.0f)
 	);
 
 	skullRitem->ObjCBIndex = 3;
