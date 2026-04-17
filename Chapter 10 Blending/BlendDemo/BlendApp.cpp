@@ -487,7 +487,12 @@ void BlendApp::AnimateMaterials(const GameTimer& gt)
 
 	waterMat->DiffuseAlbedo = XMFLOAT4(r, g, b, 0.5f);
 
-	miniSkullMat->DiffuseAlbedo = XMFLOAT4(3.0f, 0.5f + 1.0f * sinf(t * 1.1f), 0.0f, 1.0f);
+	miniSkullMat->DiffuseAlbedo = XMFLOAT4(
+		15.0f, 
+		2.0f + 10.0f * sinf(t * 1.1f), 
+		0.0f, 
+		1.0f
+	);
 
 	// Material has changed, so need to update cbuffer.
 	waterMat->NumFramesDirty = gNumFrameResources;
@@ -1187,7 +1192,7 @@ void BlendApp::BuildPSOs()
 	D3D12_RENDER_TARGET_BLEND_DESC additiveBlendDesc = {};
 	additiveBlendDesc.BlendEnable = true;
 	additiveBlendDesc.LogicOpEnable = false;
-	additiveBlendDesc.SrcBlend = D3D12_BLEND_SRC_ALPHA;
+	additiveBlendDesc.SrcBlend = D3D12_BLEND_ONE;
 	additiveBlendDesc.DestBlend = D3D12_BLEND_ONE;        // <-- KEY difference: adds to dest
 	additiveBlendDesc.BlendOp = D3D12_BLEND_OP_ADD;
 	additiveBlendDesc.SrcBlendAlpha = D3D12_BLEND_ONE;
@@ -1398,7 +1403,7 @@ void BlendApp::BuildRenderItems()
 
 	mMiniSkullRitem1 = miniSkullRitem1.get();
 
-	mRitemLayer[(int)RenderLayer::Opaque].push_back(miniSkullRitem1.get());
+	mRitemLayer[(int)RenderLayer::Additive].push_back(miniSkullRitem1.get());
 
 	auto miniSkullRitem2 = std::make_unique<RenderItem>();
 	miniSkullRitem2->ObjCBIndex = 5;
@@ -1409,7 +1414,7 @@ void BlendApp::BuildRenderItems()
 		miniSkullRitem2->Geo->DrawArgs["skull"].IndexCount;
 	mMiniSkullRitem2 = miniSkullRitem2.get();
 
-	mRitemLayer[(int)RenderLayer::Opaque].push_back(miniSkullRitem2.get());
+	mRitemLayer[(int)RenderLayer::Additive].push_back(miniSkullRitem2.get());
 
 	auto miniSkullRitem3 = std::make_unique<RenderItem>();
 	miniSkullRitem3->ObjCBIndex = 6;
@@ -1420,7 +1425,7 @@ void BlendApp::BuildRenderItems()
 		miniSkullRitem3->Geo->DrawArgs["skull"].IndexCount;
 	mMiniSkullRitem3 = miniSkullRitem3.get();
 
-	mRitemLayer[(int)RenderLayer::Opaque].push_back(miniSkullRitem3.get());
+	mRitemLayer[(int)RenderLayer::Additive].push_back(miniSkullRitem3.get());
 
 	auto torusRitem = std::make_unique<RenderItem>();
 	XMStoreFloat4x4(&torusRitem->World,
