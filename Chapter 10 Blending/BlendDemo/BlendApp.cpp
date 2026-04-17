@@ -90,7 +90,7 @@ private:
 	void AnimateSkull(const GameTimer& gt);
 
 	void AnimateMiniSkull(const GameTimer& gt, const XMMATRIX& parentWorld, float orbitRadius, float orbitSpeed, float selfRotateSpeed, RenderItem* miniSkullRitem);
-
+	
 	void LoadTextures();
     void BuildRootSignature();
 	void BuildDescriptorHeaps();
@@ -99,6 +99,7 @@ private:
     void BuildWavesGeometry();
 	void BuildBoxGeometry();
 	void BuildSkullGeometry();
+	void BuildTorusGeometry();
     void BuildPSOs();
     void BuildFrameResources();
     void BuildMaterials();
@@ -217,6 +218,7 @@ bool BlendApp::Initialize()
     BuildWavesGeometry();
 	BuildBoxGeometry();
 	BuildSkullGeometry();
+	BuildTorusGeometry();
 	BuildMaterials();
     BuildRenderItems();
     BuildFrameResources();
@@ -1013,6 +1015,84 @@ void BlendApp::BuildBoxGeometry()
 	mGeometries["boxGeo"] = std::move(geo);
 }
 
+void BlendApp::BuildTorusGeometry()
+{
+	const int rings = 40;       // segments around the big circle
+	const int sides = 20;       // segments around the tube
+	const float R = 6.0f;       // distance from center to tube center
+	const float r = 1.5f;       // tube radius
+
+	std::vector<Vertex> vertices;
+	std::vector<std::uint16_t> indices;
+
+	for (int i = 0; i <= rings; ++i)
+	{
+		float theta = i * XM_2PI / rings;
+		float cosT = cosf(theta), sinT = sinf(theta);
+
+		for (int j = 0; j <= sides; ++j)
+		{
+			float phi = j * XM_2PI / sides;
+			float cosP = cosf(phi), sinP = sinf(phi);
+
+			Vertex v;
+			float x = (R + r * cosP) * cosT;
+			float y = r * sinP;
+			float z = (R + r * cosP) * sinT;
+			v.Pos = { x, y, z };
+
+			// Normal points away from the tube center-line
+			XMVECTOR center = XMVectorSet(R * cosT, 0.0f, R * sinT, 0.0f);
+			XMVECTOR pos = XMVectorSet(x, y, z, 0.0f);
+			XMVECTOR n = XMVector3Normalize(pos - center);
+			XMStoreFloat3(&v.Normal, n);
+
+			v.TexC = { (float)i / rings, (float)j / sides };
+			vertices.push_back(v);
+		}
+	}
+
+	for (int i = 0; i < rings; ++i)
+	{
+		for (int j = 0; j < sides; ++j)
+		{
+			int a = i * (sides + 1) + j;
+			int b = a + (sides + 1);
+			indices.push_back(a);     indices.push_back(b);     indices.push_back(a + 1);
+			indices.push_back(a + 1); indices.push_back(b);     indices.push_back(b + 1);
+		}
+	}
+
+	const UINT vbByteSize = (UINT)vertices.size() * sizeof(Vertex);
+	const UINT ibByteSize = (UINT)indices.size() * sizeof(std::uint16_t);
+
+	auto geo = std::make_unique<MeshGeometry>();
+	geo->Name = "torusGeo";
+
+	ThrowIfFailed(D3DCreateBlob(vbByteSize, &geo->VertexBufferCPU));
+	CopyMemory(geo->VertexBufferCPU->GetBufferPointer(), vertices.data(), vbByteSize);
+	ThrowIfFailed(D3DCreateBlob(ibByteSize, &geo->IndexBufferCPU));
+	CopyMemory(geo->IndexBufferCPU->GetBufferPointer(), indices.data(), ibByteSize);
+
+	geo->VertexBufferGPU = d3dUtil::CreateDefaultBuffer(md3dDevice.Get(),
+		mCommandList.Get(), vertices.data(), vbByteSize, geo->VertexBufferUploader);
+	geo->IndexBufferGPU = d3dUtil::CreateDefaultBuffer(md3dDevice.Get(),
+		mCommandList.Get(), indices.data(), ibByteSize, geo->IndexBufferUploader);
+
+	geo->VertexByteStride = sizeof(Vertex);
+	geo->VertexBufferByteSize = vbByteSize;
+	geo->IndexFormat = DXGI_FORMAT_R16_UINT;
+	geo->IndexBufferByteSize = ibByteSize;
+
+	SubmeshGeometry submesh;
+	submesh.IndexCount = (UINT)indices.size();
+	submesh.StartIndexLocation = 0;
+	submesh.BaseVertexLocation = 0;
+	geo->DrawArgs["torus"] = submesh;
+
+	mGeometries["torusGeo"] = std::move(geo);
+}
+
 void BlendApp::BuildPSOs()
 {
     D3D12_GRAPHICS_PIPELINE_STATE_DESC opaquePsoDesc;
@@ -1133,6 +1213,15 @@ void BlendApp::BuildMaterials()
 	miniSkull->FresnelR0 = XMFLOAT3(0.05f, 0.05f, 0.05f);
 	miniSkull->Roughness = 0.6f;
 
+	auto torus = std::make_unique<Material>();
+	torus->Name = "torusMat";
+	torus->MatCBIndex = 5;            // next available index after miniSkull=4
+	torus->DiffuseSrvHeapIndex = 0;   // reuses grass texture — swap for your own
+	torus->DiffuseAlbedo = XMFLOAT4(0.8f, 0.3f, 0.1f, 0.6f);  // semi-transparent orange
+	torus->FresnelR0 = XMFLOAT3(0.3f, 0.3f, 0.3f);
+	torus->Roughness = 0.1f;
+	
+	mMaterials["torusMat"] = std::move(torus);
 	mMaterials["skullWhite"] = std::move(skull);
 	mMaterials["miniSkull"] = std::move(miniSkull);
 
@@ -1237,6 +1326,20 @@ void BlendApp::BuildRenderItems()
 
 	mRitemLayer[(int)RenderLayer::Opaque].push_back(miniSkullRitem3.get());
 
+	auto torusRitem = std::make_unique<RenderItem>();
+	XMStoreFloat4x4(&torusRitem->World,
+		XMMatrixScaling(1.5f, 1.5f, 1.5f) * XMMatrixTranslation(0.0f, 12.0f, -8.0f));
+	torusRitem->ObjCBIndex = 7;         // next after miniSkullRitem3=6
+	torusRitem->Mat = mMaterials["torusMat"].get();
+	torusRitem->Geo = mGeometries["torusGeo"].get();
+	torusRitem->PrimitiveType = D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST;
+	torusRitem->IndexCount = torusRitem->Geo->DrawArgs["torus"].IndexCount;
+	torusRitem->StartIndexLocation = torusRitem->Geo->DrawArgs["torus"].StartIndexLocation;
+	torusRitem->BaseVertexLocation = torusRitem->Geo->DrawArgs["torus"].BaseVertexLocation;
+	
+	mRitemLayer[(int)RenderLayer::Transparent].push_back(torusRitem.get());
+	
+	mAllRitems.push_back(std::move(torusRitem));
     mAllRitems.push_back(std::move(wavesRitem));
     mAllRitems.push_back(std::move(gridRitem));
 	mAllRitems.push_back(std::move(boxRitem));
