@@ -92,7 +92,7 @@ private:
 
 	void AnimateSkull(const GameTimer& gt);
 
-	void AnimateMiniSkull(const GameTimer& gt, const XMMATRIX& parentWorld, float orbitRadius, float orbitSpeed, float selfRotateSpeed, RenderItem* miniSkullRitem);
+	void AnimateMiniSkull(const GameTimer& gt, const XMMATRIX& parentWorld, float orbitRadius, float orbitSpeed, float selfRotateSpeed, float scaleSpeed, RenderItem* miniSkullRitem);
 	
 	void LoadTextures();
     void BuildRootSignature();
@@ -276,9 +276,9 @@ void BlendApp::Update(const GameTimer& gt)
 	UpdateMainPassCB(gt);
     UpdateWaves(gt);
 	AnimateSkull(gt);
-	AnimateMiniSkull(gt, XMLoadFloat4x4(&mSkullRitem->World), 25.0f, 1.0f, 2.0f, mMiniSkullRitem1);
-	AnimateMiniSkull(gt, XMLoadFloat4x4(&mSkullRitem->World), 20.0f, -2.0f, -1.0f, mMiniSkullRitem2);
-	AnimateMiniSkull(gt, XMLoadFloat4x4(&mSkullRitem->World), 23.0f, 2.0f, -0.5f, mMiniSkullRitem3);
+	AnimateMiniSkull(gt, XMLoadFloat4x4(&mSkullRitem->World), 25.0f, 1.0f, 2.0f, 0.8f, mMiniSkullRitem1);
+	AnimateMiniSkull(gt, XMLoadFloat4x4(&mSkullRitem->World), 20.0f, -2.0f, -1.0f, 1.2f, mMiniSkullRitem2);
+	AnimateMiniSkull(gt, XMLoadFloat4x4(&mSkullRitem->World), 23.0f, 2.0f, -0.5f, 1.0f, mMiniSkullRitem3);
 }
 
 void BlendApp::Draw(const GameTimer& gt)
@@ -442,13 +442,14 @@ void BlendApp::AnimateSkull(const GameTimer& gt)
 	mSkullRitem->NumFramesDirty = gNumFrameResources;
 }
 
-void BlendApp::AnimateMiniSkull(const GameTimer& gt, const XMMATRIX& parentWorld, float orbitRadius, float orbitSpeed, float selfRotateSpeed, RenderItem* miniSkullRitem)
+void BlendApp::AnimateMiniSkull(const GameTimer& gt, const XMMATRIX& parentWorld, float orbitRadius, float orbitSpeed, float selfRotateSpeed, float scaleSpeed, RenderItem* miniSkullRitem)
 {
 	float t = gt.TotalTime();
+	float scaleRate = sin(t * scaleSpeed) * 0.5f;
 
 	XMMATRIX orbitRotation = XMMatrixRotationY(t * orbitSpeed) * XMMatrixRotationX(t * orbitSpeed) * XMMatrixRotationZ(t * orbitSpeed);
 	XMMATRIX selfRotation = XMMatrixRotationY(t * selfRotateSpeed);
-	XMMATRIX scale = XMMatrixScaling(0.3f, 0.3f, 0.3f);
+	XMMATRIX scale = XMMatrixScaling(scaleRate, scaleRate + sin(t) * 0.2f, scaleRate + cos(t) * 0.2f);
 	XMMATRIX translation = XMMatrixTranslation(orbitRadius, 0.0f, 0.0f);
 
 	XMMATRIX world = scale * selfRotation* translation* orbitRotation* parentWorld;
