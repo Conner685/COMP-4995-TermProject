@@ -59,6 +59,8 @@ enum class RenderLayer : int
 	Transparent,
 	AlphaTested,
 	Additive,
+	StencilMark,
+	Outline,
 	Count
 };
 
@@ -137,6 +139,7 @@ private:
 	RenderItem* mMiniSkullRitem1 = nullptr;
 	RenderItem* mMiniSkullRitem2 = nullptr;
 	RenderItem* mMiniSkullRitem3 = nullptr;
+	RenderItem* mSkullOutlineRitem = nullptr;
 
 	// List of all the render items.
 	std::vector<std::unique_ptr<RenderItem>> mAllRitems;
@@ -314,6 +317,15 @@ void BlendApp::Draw(const GameTimer& gt)
 
     DrawRenderItems(mCommandList.Get(), mRitemLayer[(int)RenderLayer::Opaque]);
 
+	// After DrawRenderItems opaque:
+	mCommandList->OMSetStencilRef(1);
+	mCommandList->SetPipelineState(mPSOs["stencilMark"].Get());
+	DrawRenderItems(mCommandList.Get(), mRitemLayer[(int)RenderLayer::StencilMark]);
+
+	mCommandList->SetPipelineState(mPSOs["outline"].Get());
+	DrawRenderItems(mCommandList.Get(), mRitemLayer[(int)RenderLayer::Outline]);
+	mCommandList->OMSetStencilRef(0); // reset
+
 	mCommandList->SetPipelineState(mPSOs["alphaTested"].Get());
 	DrawRenderItems(mCommandList.Get(), mRitemLayer[(int)RenderLayer::AlphaTested]);
 
@@ -421,7 +433,12 @@ void BlendApp::AnimateSkull(const GameTimer& gt)
 	XMMATRIX world = scale * rotation * translation;
 	
 	XMStoreFloat4x4(&mSkullRitem->World, world);
-
+	
+	XMMATRIX outlineScale = XMMatrixScaling(0.54f, 0.54f, 0.54f); // 8% bigger than skull's 0.5
+	XMMATRIX outlineWorld = outlineScale * rotation * translation;
+	XMStoreFloat4x4(&mSkullOutlineRitem->World, outlineWorld);
+	mSkullOutlineRitem->NumFramesDirty = gNumFrameResources;
+	
 	mSkullRitem->NumFramesDirty = gNumFrameResources;
 }
 
@@ -1180,6 +1197,36 @@ void BlendApp::BuildPSOs()
 	additivePsoDesc.BlendState.RenderTarget[0] = additiveBlendDesc;
 	additivePsoDesc.DepthStencilState.DepthWriteMask = D3D12_DEPTH_WRITE_MASK_ZERO; // don't write depth for glows
 	ThrowIfFailed(md3dDevice->CreateGraphicsPipelineState(&additivePsoDesc, IID_PPV_ARGS(&mPSOs["additive"])));
+
+	// Pass 1: write stencil=1 where the skull is drawn (no color write)
+	D3D12_GRAPHICS_PIPELINE_STATE_DESC stencilMarkDesc = opaquePsoDesc;
+	D3D12_DEPTH_STENCIL_DESC stencilMark = CD3DX12_DEPTH_STENCIL_DESC(D3D12_DEFAULT);
+	stencilMark.StencilEnable = TRUE;
+	stencilMark.StencilReadMask = 0xFF;
+	stencilMark.StencilWriteMask = 0xFF;
+	stencilMark.FrontFace.StencilFailOp = D3D12_STENCIL_OP_KEEP;
+	stencilMark.FrontFace.StencilDepthFailOp = D3D12_STENCIL_OP_KEEP;
+	stencilMark.FrontFace.StencilPassOp = D3D12_STENCIL_OP_REPLACE; // write ref value
+	stencilMark.FrontFace.StencilFunc = D3D12_COMPARISON_FUNC_ALWAYS;
+	stencilMark.BackFace = stencilMark.FrontFace;
+	stencilMarkDesc.DepthStencilState = stencilMark;
+	stencilMarkDesc.BlendState.RenderTarget[0].RenderTargetWriteMask = 0; // no color
+	ThrowIfFailed(md3dDevice->CreateGraphicsPipelineState(&stencilMarkDesc, IID_PPV_ARGS(&mPSOs["stencilMark"])));
+
+	// Pass 2: draw scaled-up skull only where stencil != 1 (the border ring)
+	D3D12_GRAPHICS_PIPELINE_STATE_DESC outlineDesc = opaquePsoDesc;
+	D3D12_DEPTH_STENCIL_DESC outlineDS = CD3DX12_DEPTH_STENCIL_DESC(D3D12_DEFAULT);
+	outlineDS.DepthEnable = FALSE;   // draw on top regardless
+	outlineDS.StencilEnable = TRUE;
+	outlineDS.StencilReadMask = 0xFF;
+	outlineDS.StencilWriteMask = 0x00;
+	outlineDS.FrontFace.StencilFailOp = D3D12_STENCIL_OP_KEEP;
+	outlineDS.FrontFace.StencilDepthFailOp = D3D12_STENCIL_OP_KEEP;
+	outlineDS.FrontFace.StencilPassOp = D3D12_STENCIL_OP_KEEP;
+	outlineDS.FrontFace.StencilFunc = D3D12_COMPARISON_FUNC_NOT_EQUAL; // only where skull ISN'T
+	outlineDS.BackFace = outlineDS.FrontFace;
+	outlineDesc.DepthStencilState = outlineDS;
+	ThrowIfFailed(md3dDevice->CreateGraphicsPipelineState(&outlineDesc, IID_PPV_ARGS(&mPSOs["outline"])));
 }
 
 void BlendApp::BuildFrameResources()
@@ -1311,6 +1358,22 @@ void BlendApp::BuildRenderItems()
 	mSkullRitem = skullRitem.get();
 
 	mRitemLayer[(int)RenderLayer::Opaque].push_back(skullRitem.get());
+
+	auto skullOutlineRitem = std::make_unique<RenderItem>();
+	
+	skullOutlineRitem->ObjCBIndex = 8;  // next available
+	skullOutlineRitem->Mat = mMaterials["skullWhite"].get();
+	skullOutlineRitem->Geo = mGeometries["skullGeo"].get();
+	skullOutlineRitem->PrimitiveType = D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST;
+	
+	skullOutlineRitem->IndexCount = skullOutlineRitem->Geo->DrawArgs["skull"].IndexCount;
+	
+	mSkullOutlineRitem = skullOutlineRitem.get();
+	
+	mRitemLayer[(int)RenderLayer::StencilMark].push_back(skullRitem.get());   // mark skull
+	mRitemLayer[(int)RenderLayer::Outline].push_back(skullOutlineRitem.get()); // draw outline
+	mAllRitems.push_back(std::move(skullOutlineRitem));
+
 
 	auto miniSkullRitem1 = std::make_unique<RenderItem>();
 
