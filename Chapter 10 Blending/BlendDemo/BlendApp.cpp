@@ -58,6 +58,7 @@ enum class RenderLayer : int
 	Opaque = 0,
 	Transparent,
 	AlphaTested,
+	Additive,
 	Count
 };
 
@@ -318,6 +319,9 @@ void BlendApp::Draw(const GameTimer& gt)
 
 	mCommandList->SetPipelineState(mPSOs["transparent"].Get());
 	DrawRenderItems(mCommandList.Get(), mRitemLayer[(int)RenderLayer::Transparent]);
+
+	mCommandList->SetPipelineState(mPSOs["additive"].Get());
+	DrawRenderItems(mCommandList.Get(), mRitemLayer[(int)RenderLayer::Additive]);
 
     // Indicate a state transition on the resource usage.
 	mCommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(CurrentBackBuffer(),
@@ -1158,6 +1162,24 @@ void BlendApp::BuildPSOs()
 	};
 	alphaTestedPsoDesc.RasterizerState.CullMode = D3D12_CULL_MODE_NONE;
 	ThrowIfFailed(md3dDevice->CreateGraphicsPipelineState(&alphaTestedPsoDesc, IID_PPV_ARGS(&mPSOs["alphaTested"])));
+
+	// --- Additive blend PSO (glow effect — different from demo's alpha blend) ---
+	D3D12_GRAPHICS_PIPELINE_STATE_DESC additivePsoDesc = opaquePsoDesc;
+
+	D3D12_RENDER_TARGET_BLEND_DESC additiveBlendDesc = {};
+	additiveBlendDesc.BlendEnable = true;
+	additiveBlendDesc.LogicOpEnable = false;
+	additiveBlendDesc.SrcBlend = D3D12_BLEND_SRC_ALPHA;
+	additiveBlendDesc.DestBlend = D3D12_BLEND_ONE;        // <-- KEY difference: adds to dest
+	additiveBlendDesc.BlendOp = D3D12_BLEND_OP_ADD;
+	additiveBlendDesc.SrcBlendAlpha = D3D12_BLEND_ONE;
+	additiveBlendDesc.DestBlendAlpha = D3D12_BLEND_ZERO;
+	additiveBlendDesc.BlendOpAlpha = D3D12_BLEND_OP_ADD;
+	additiveBlendDesc.RenderTargetWriteMask = D3D12_COLOR_WRITE_ENABLE_ALL;
+
+	additivePsoDesc.BlendState.RenderTarget[0] = additiveBlendDesc;
+	additivePsoDesc.DepthStencilState.DepthWriteMask = D3D12_DEPTH_WRITE_MASK_ZERO; // don't write depth for glows
+	ThrowIfFailed(md3dDevice->CreateGraphicsPipelineState(&additivePsoDesc, IID_PPV_ARGS(&mPSOs["additive"])));
 }
 
 void BlendApp::BuildFrameResources()
@@ -1337,7 +1359,7 @@ void BlendApp::BuildRenderItems()
 	torusRitem->StartIndexLocation = torusRitem->Geo->DrawArgs["torus"].StartIndexLocation;
 	torusRitem->BaseVertexLocation = torusRitem->Geo->DrawArgs["torus"].BaseVertexLocation;
 	
-	mRitemLayer[(int)RenderLayer::Transparent].push_back(torusRitem.get());
+	mRitemLayer[(int)RenderLayer::Additive].push_back(torusRitem.get());
 	
 	mAllRitems.push_back(std::move(torusRitem));
     mAllRitems.push_back(std::move(wavesRitem));
