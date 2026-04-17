@@ -434,7 +434,7 @@ void BlendApp::AnimateSkull(const GameTimer& gt)
 	
 	XMStoreFloat4x4(&mSkullRitem->World, world);
 	
-	XMMATRIX outlineScale = XMMatrixScaling(0.54f, 0.54f, 0.54f); // 8% bigger than skull's 0.5
+	XMMATRIX outlineScale = XMMatrixScaling(0.60f, 0.60f, 0.60f); // 8% bigger than skull's 0.5
 	XMMATRIX outlineWorld = outlineScale * rotation * translation;
 	XMStoreFloat4x4(&mSkullOutlineRitem->World, outlineWorld);
 	mSkullOutlineRitem->NumFramesDirty = gNumFrameResources;
@@ -1215,6 +1215,7 @@ void BlendApp::BuildPSOs()
 
 	// Pass 2: draw scaled-up skull only where stencil != 1 (the border ring)
 	D3D12_GRAPHICS_PIPELINE_STATE_DESC outlineDesc = opaquePsoDesc;
+	outlineDesc.RasterizerState.CullMode = D3D12_CULL_MODE_FRONT; // cull FRONT faces so inside of shell doesn't show
 	D3D12_DEPTH_STENCIL_DESC outlineDS = CD3DX12_DEPTH_STENCIL_DESC(D3D12_DEFAULT);
 	outlineDS.DepthEnable = FALSE;   // draw on top regardless
 	outlineDS.StencilEnable = TRUE;
@@ -1290,6 +1291,15 @@ void BlendApp::BuildMaterials()
 	torus->FresnelR0 = XMFLOAT3(0.3f, 0.3f, 0.3f);
 	torus->Roughness = 0.1f;
 	
+	auto skullOutline = std::make_unique<Material>();
+	skullOutline->Name = "skullOutline";
+	skullOutline->MatCBIndex = 6;           // next after torusMat=5
+	skullOutline->DiffuseSrvHeapIndex = 2;
+	skullOutline->DiffuseAlbedo = XMFLOAT4(1.0f, 0.2f, 0.0f, 1.0f); // bright orange
+	skullOutline->FresnelR0 = XMFLOAT3(0.9f, 0.9f, 0.9f);
+	skullOutline->Roughness = 0.0f;
+	mMaterials["skullOutline"] = std::move(skullOutline);
+
 	mMaterials["torusMat"] = std::move(torus);
 	mMaterials["skullWhite"] = std::move(skull);
 	mMaterials["miniSkull"] = std::move(miniSkull);
@@ -1362,7 +1372,7 @@ void BlendApp::BuildRenderItems()
 	auto skullOutlineRitem = std::make_unique<RenderItem>();
 	
 	skullOutlineRitem->ObjCBIndex = 8;  // next available
-	skullOutlineRitem->Mat = mMaterials["skullWhite"].get();
+	skullOutlineRitem->Mat = mMaterials["skullOutline"].get();
 	skullOutlineRitem->Geo = mGeometries["skullGeo"].get();
 	skullOutlineRitem->PrimitiveType = D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST;
 	
