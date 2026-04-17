@@ -547,12 +547,45 @@ void BlendApp::UpdateMainPassCB(const GameTimer& gt)
 	mMainPassCB.FogColor = { 0.7f, 0.7f, 0.7f, 1.0f }; 
 	mMainPassCB.gFogStart = 5.0f;
 	mMainPassCB.gFogRange = 150.0f;
-	mMainPassCB.Lights[0].Direction = { 0.57735f, -0.57735f, 0.57735f };
-	mMainPassCB.Lights[0].Strength = { 0.9f, 0.9f, 0.8f };
-	mMainPassCB.Lights[1].Direction = { -0.57735f, -0.57735f, 0.57735f };
-	mMainPassCB.Lights[1].Strength = { 0.3f, 0.3f, 0.3f };
+	// Og Demo Lighting
+	//mMainPassCB.Lights[0].Direction = { 0.57735f, -0.57735f, 0.57735f };
+	//mMainPassCB.Lights[0].Strength = { 0.9f, 0.9f, 0.8f };
+	//mMainPassCB.Lights[1].Direction = { -0.57735f, -0.57735f, 0.57735f };
+	//mMainPassCB.Lights[1].Strength = { 0.3f, 0.3f, 0.3f };
+	//mMainPassCB.Lights[2].Direction = { 0.0f, -0.707f, -0.707f };
+	//mMainPassCB.Lights[2].Strength = { 0.15f, 0.15f, 0.15f };
+
+	// Added lighting changed from og demo lighting
+	float t = gt.TotalTime();
+	// First light slowly rotates its direction around and shifts warm/cool colour
+	float angle0 = t * 0.3f;
+	mMainPassCB.Lights[0].Direction = {
+		sinf(angle0) * 0.57735f,
+		-0.57735f,
+		cosf(angle0) * 0.57735f
+	};
+	float warmCool = 0.5f + 0.5f * sinf(t * 0.4f);
+	mMainPassCB.Lights[0].Strength = {
+		0.6f + 0.4f * warmCool,
+		0.6f + 0.2f * sinf(t * 0.4f),
+		0.6f + 0.4f * (1.0f - warmCool)
+	};
+	// second light orbits opposite direction with some color tinting
+	float angle1 = -t * 0.5f + XM_PI;
+	mMainPassCB.Lights[1].Direction = {
+		sinf(angle1) * 0.57735f,
+		-0.57735f,
+		cosf(angle1) * 0.57735f
+	};
+	mMainPassCB.Lights[1].Strength = {
+		0.15f + 0.1f * sinf(t * 0.7f),
+		0.2f + 0.15f * sinf(t * 0.9f + 1.0f),
+		0.25f + 0.1f * sinf(t * 0.6f + 2.0f)
+	};
+	// Last light is a back light that pulses subtly
 	mMainPassCB.Lights[2].Direction = { 0.0f, -0.707f, -0.707f };
-	mMainPassCB.Lights[2].Strength = { 0.15f, 0.15f, 0.15f };
+	float backPulse = 0.08f + 0.07f * fabsf(sinf(t * 1.3f));
+	mMainPassCB.Lights[2].Strength = { backPulse, backPulse, backPulse * 1.2f };
 
 	auto currPassCB = mCurrFrameResource->PassCB.get();
 	currPassCB->CopyData(0, mMainPassCB);
